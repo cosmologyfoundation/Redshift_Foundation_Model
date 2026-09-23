@@ -61,7 +61,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | confidence output: evidence floor, posterior width, corroboration count | 5 | — | **not built** as outputs; available only as reranker inputs |
 | class head sees brightness | v10 | — | **not built** for `logit_c`; the reranker sees `log_median_flux` |
 | detection output `P_model(z_Redrock)` with a reason | 6e | `teacher.py` (deep-tail teacher, ≥ 10σ) | **prototype measured 2026-09-22**: blind reading of 100 flags, teacher right 36/45 decidable disputes (80%), Redrock wrong on ≥ 36/100 (≥ 36× the base rate); 28 of 41 undecidable flags were sky residuals — see §6e |
-| sky/artifact mask in the evidence maps | 3, 6e | `evidence.spectrum_maps(sky=0.3)` | **built 2026-09-23**; used for the detection flag (224 → 170, precision 40% → 52% in-sample); **not yet in training** — the reranker must be retrained to use masked features |
+| sky/artifact mask in the evidence maps | 3, 6e | `evidence.spectrum_maps(sky=0.3)` | **built 2026-09-23**; used for the detection flag (224 → 170; out of sample Redrock wrong on ≥ 46/99, teacher right 78% of decidable disputes). **Not for the reranker**: retrained with masked features, 154 saved / 190 broken, p = 0.059 |
 | eval refuses a headline without the stratification table | 6 | — | **not built** |
 | encoder input without the ±50 clip | 2 | `model.CLIP` | **defect**, measured, not fixed |
 | label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | — | **not built** |
@@ -1178,6 +1178,27 @@ single-line Lyα quasars the teacher had right (§5: marking is free, refusing i
 not). On all 100,000 deep-tail rows: **224 → 170 flags** (54 dropped, none
 added), **116 tier A** (corroborated) and **54 tier B**
 (`/pscratch/sd/s/shunth/zfm_flags_v2.npz`).
+
+**Out-of-sample check, 2026-09-23 (`blind170/`).** The 99 v2 flags not read in
+blind224, plus 50 fresh controls, read blind and frozen before the key opened.
+Controls **50/50** agree with both sides. Candidates: my z sides with the
+teacher **46**, Redrock **14**, neither 39; on the decidable ones **35 vs 10 —
+teacher right 78% (95% CI 63–89%)**, the same as the in-sample 80%. **Redrock is
+wrong on at least 46 of 99 flags (≥ 46× the ~1% base rate)**, up from 36/100
+before the mask. The corroboration tiers came out **backwards**: tier A
+(corroborated) 31 teacher / 14 Redrock, tier B (single strong line) **15 / 0**.
+Corroborated flags include blends and a real line combined with a spurious one,
+so the tier is **not** a confidence signal and is withdrawn as one (n = 26 in
+tier B: a direction).
+
+**The mask does not help the redshift reranker.** Retrained with masked evidence
+features (`--sky 0.3`), 300k, seed 42, against the identical-config unmasked
+baseline on 99,424 validation spectra: catastrophic **1.127% → 1.164%, 154 saved
+/ 190 broken, p = 0.059** — no gain, if anything a loss, mostly ELG (+6%). So the
+mask is kept **for the detection flag, where it is measured to help, and not for
+the reranker's features**. The likely reason is that the reranker already learns
+to discount pixels near low ivar from the √ivar channel, while the fixed 10σ
+test of the flag cannot.
 
 ### What this changes in the model
 
