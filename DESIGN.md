@@ -60,7 +60,8 @@ this table and `train.py` prints every unbuilt item at startup.
 | reader-asserted feature positions enter `S` as a prior | 3 | — | **not built** |
 | confidence output: evidence floor, posterior width, corroboration count | 5 | — | **not built** as outputs; available only as reranker inputs |
 | class head sees brightness | v10 | — | **not built** for `logit_c`; the reranker sees `log_median_flux` |
-| detection output `P_model(z_Redrock)` with a reason | 6e | — | **not built** |
+| detection output `P_model(z_Redrock)` with a reason | 6e | `teacher.py` (deep-tail teacher, ≥ 10σ) | **prototype measured 2026-09-22**: blind reading of 100 flags, teacher right 36/45 decidable disputes (80%), Redrock wrong on ≥ 36/100 (≥ 36× the base rate); 28 of 41 undecidable flags were sky residuals — see §6e |
+| sky/artifact mask in the evidence maps | 3, 6e | — | **not built** — 28 of 41 undecidable detection flags were sky residuals counted as ≥ 10σ |
 | eval refuses a headline without the stratification table | 6 | — | **not built** |
 | encoder input without the ±50 clip | 2 | `model.CLIP` | **defect**, measured, not fixed |
 | label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | — | **not built** |
@@ -1112,6 +1113,46 @@ defaults proposed here:
 - **net** — the interval on (model right − Redrock right) among disagreements
   must exclude zero. Until it does, the claim is "agrees with Redrock", not
   "beats it".
+
+### Measured: the first detection result (2026-09-22)
+
+**Set.** The deep-tail teacher (§7b-2) flagged 224 SV3 objects where its answer
+carries ≥ 10σ evidence and differs from Redrock by > 0.1. 100 were drawn and
+mixed with 50 controls (teacher and Redrock agree), shuffled into OBJ001–150,
+rendered with no identity, and read blind (`blind224/`). Every answer was frozen
+(`answers_FROZEN_before_key.txt`, read-only) before the key was opened once.
+
+**Controls — the reading is sound.** 50/50 agree with both at the catastrophic
+level; 48 within 0.01(1+z), the other 2 passive galaxies off by 1.0–1.5%.
+
+**Candidates.** My blind z sides with:
+
+| | teacher | Redrock | neither |
+|---|---|---|---|
+| all 100 | **40** | 14 | 46 |
+| excluding the 41 I marked `??` (no readable feature) | **36** | 9 | 14 |
+
+- Where exactly one side matches the reading, **the teacher is right 36/45 = 80%
+  (95% CI 65–90%)**.
+- **Redrock is demonstrably wrong on at least 36 of the 100 flagged objects**,
+  against a ~1% base rate: the flag is **≥ 36× enriched** for Redrock errors.
+  3 more are **blends** (two galaxies in one fibre) where each side found a real
+  system (OBJ008, OBJ082, OBJ095).
+- Redrock's failures found: **quasars put at low z with the broad lines ignored**
+  (OBJ062 −0.001 → 2.22, OBJ144 0.17 → 2.65, OBJ057 0.92 → 2.64, OBJ117, OBJ118,
+  OBJ148); **stars at z ≈ 1–1.6** (OBJ007 STAR target called QSO at 1.56, OBJ145
+  at 1.04 — the white-dwarf pattern of §6c); **one line misidentified** in ~20
+  galaxies.
+- Caveat: 4 teacher wins are single-line quasars read as Lyα rather than C IV on
+  the strength of a blueward flux decrement; if all four were C IV the share
+  falls to 32/45 = 71%.
+
+**The defect it exposed.** Of the 41 undecidable candidates, **28 owe their
+"≥ 10σ" evidence to a sky residual or a data artifact** (teacher's best line
+median 11.9σ). `evidence.py` does not mask ivar troughs, so a sky line counts as
+strong evidence — which corrupts the flag and every reranker feature built on
+the same maps. Masking pixels whose ivar falls well below its local median is
+the next fix, and the detection precision should be re-measured after it.
 
 ### What this changes in the model
 
