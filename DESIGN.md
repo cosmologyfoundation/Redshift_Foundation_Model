@@ -50,7 +50,8 @@ this table and `train.py` prints every unbuilt item at startup.
 | reranker final LayerNorm; abort on diverging rank loss | 3, 4 | `--rr_final_norm` | built |
 | reranker reads **what else is true at each candidate z**: the 4000 Å break, every line's narrow and broad σ, corroboration counts, the strongest unexplained peak, the evidence floor, brightness | 3, 5 | `evidence.py`, `--evidence` | **built 2026-09-22**; validated against `speclib.py` (break r = 1.0000, line r = 0.9946). **A/B at 300k, two seeds: HELPS** (pre-registered, `results/prereg_ev.txt`) — catastrophic 1.169/1.181% → 1.089/1.117%, **229 saved / 157 broken, McNemar p = 2.9 × 10⁻⁴**; QSO 38/14, LRG 23/12, ELG 107/87 |
 | dense z loss over the whole grid | 4.1 | `train.py` | built |
-| multi-label BCE on the target bits | 4.5 | `train.py` | built |
+| multi-label BCE on the target bits | 4.5 | `train.py` | built; **superseded 2026-09-23** by the class head below |
+| learned class head (pooled encoder + detached surface summary, softmax CE on normalised target bits) | 2, 4.5 | `ZFM(class_head=True)`, `--class_head`, `train.class_ce` | **built and adopted 2026-09-23**: `class_any_bit` 0.197/0.846/0.601 → 0.927/0.920/0.923, z unchanged |
 | cross-class alias negatives | 4.2 | `alias.py`, `--alias` | **built 2026-09-22**; 30k check: trains (margin 1.26 → 0.009) but does **not** move the targeted alias share — see §5 |
 | surface recall loss: the truth must beat the K-th peak | 3 | `--recall` | **built 2026-09-22**; 300k A/B: **no effect** (1.127% → 1.132%, 143 saved / 147 broken, p = 0.86) and the targeted share did not move (truth proposed 74.0% → 72.9%). The term is a **mean over objects and 98% already satisfy it**, so it was 0.002 with a negligible gradient while the 2% tail carries no weight. It did improve the surface — z loss 0.8513 → 0.8253, rank 0.550 → 0.466 — just not where the catastrophics are. Fixed the same day (`--recall_hard`, mean over violators only): the term then bit exactly the right tail — violator fraction 0.1–0.3% in training, matching the 0.3% of objects whose truth is not proposed — and **still moved nothing**: 1.127% → 1.160%, 137 saved / 169 broken, p = 0.076, truth proposed 74.0% → 74.3%. **Recall is limited by information, not by the loss**: on non-alias catastrophics the truth carries **2.43σ** at its own redshift, so there is no signal at the truth to push above the threshold. Both versions improved the fit without touching the tail (z loss 0.8513 → 0.8253 / 0.8405, rank 0.550 → 0.466 / 0.505) |
 | penalty for a predicted line that is absent, or a ≥ 8σ feature left unexplained | 4.3 | — | **not built** as a loss; the reranker receives the information through `--evidence` |
@@ -182,6 +183,38 @@ Decision: **clamp kept** (pre-registered: no detectable effect → do not adopt)
 The softclip code stays available. The finding that matters more is the class
 head: **one seed in four collapsed**, so any class-metric comparison must first
 check `class_any_bit` in every arm.
+
+**The class read-out fixed, 2026-09-23 (`results/prereg_chead150k.txt`).**
+`class_any_bit` over six 150k runs was 0.197–0.846. The class logit was
+`logsumexp_z S[c] − ln N_Z`, a fixed read-out of the redshift surface. The z
+loss sums over classes, so it never decides which archetypes belong to which
+class; with `w_class` 0.1, and with the rank gradient saturating the global
+clip, the partition is left to the initialisation. The init class loss showed
+it: 2.30–2.49, where five sigmoids at zero give 0.69.
+
+- **Diagnosis before training** (`probe_class.py`, 20k fit / 20k validation): a
+  *linear* probe on the pooled encoder state scores **0.952–0.955 on all four
+  checkpoints tested**, including the one whose own read-out scored 0.200. The
+  class is in the encoder; only the read-out failed.
+- **Fix:** `--class_head`, a small MLP on `[mean h, max h, max_z S_c,
+  logsumexp_z S_c]` with S detached, so the class loss cannot pull the redshift
+  surface. The loss is softmax cross-entropy on the target bits normalised to
+  sum 1, with label smoothing 0.05; rows with no bit carry no class loss. Target
+  bits, never SPECTYPE. The last layer is zero-initialised, so training starts at
+  exactly ln 5 = 1.6094, and startup asserts that value.
+- **Result, three seeds each, judged on the seed spread:**
+
+  | seed | baseline `class_any_bit` | class head | baseline catastrophic | class head |
+  |---|---|---|---|---|
+  | 42 | 0.197 | **0.927** | 1.198% | 1.172% |
+  | 43 | 0.846 | **0.920** | 1.228% | 1.236% |
+  | 44 | 0.601 | **0.923** | 1.174% | 1.194% |
+
+  Spread 0.649 → **0.007**. The minimum is 0.920, against 0.80 required.
+  Catastrophic averages 1.200%, inside the baseline range 1.174–1.228%. Val z
+  loss averages 0.9469 against 0.9413, inside the 0.02 guard. **Adopted.** The
+  head sits about 0.03 below the linear-probe ceiling of 0.95, so its input and
+  width are not yet the limit worth chasing.
 
 ---
 
