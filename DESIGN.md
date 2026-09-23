@@ -61,7 +61,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | confidence output: evidence floor, posterior width, corroboration count | 5 | — | **not built** as outputs; available only as reranker inputs |
 | class head sees brightness | v10 | — | **not built** for `logit_c`; the reranker sees `log_median_flux` |
 | detection output `P_model(z_Redrock)` with a reason | 6e | `teacher.py` (deep-tail teacher, ≥ 10σ) | **prototype measured 2026-09-22**: blind reading of 100 flags, teacher right 36/45 decidable disputes (80%), Redrock wrong on ≥ 36/100 (≥ 36× the base rate); 28 of 41 undecidable flags were sky residuals — see §6e |
-| sky/artifact mask in the evidence maps | 3, 6e | — | **not built** — 28 of 41 undecidable detection flags were sky residuals counted as ≥ 10σ |
+| sky/artifact mask in the evidence maps | 3, 6e | `evidence.spectrum_maps(sky=0.3)` | **built 2026-09-23**; used for the detection flag (224 → 170, precision 40% → 52% in-sample); **not yet in training** — the reranker must be retrained to use masked features |
 | eval refuses a headline without the stratification table | 6 | — | **not built** |
 | encoder input without the ±50 clip | 2 | `model.CLIP` | **defect**, measured, not fixed |
 | label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | — | **not built** |
@@ -1153,6 +1153,31 @@ median 11.9σ). `evidence.py` does not mask ivar troughs, so a sky line counts a
 strong evidence — which corrupts the flag and every reranker feature built on
 the same maps. Masking pixels whose ivar falls well below its local median is
 the next fix, and the detection precision should be re-measured after it.
+
+**Fixed 2026-09-23 (`evidence.spectrum_maps(x, sky=r)`).** A pixel whose ivar is
+below r × its 121-px local mean is treated as no measurement, and so is any pixel
+within ±3 of a bad one (OBJ002's seven 15–67σ "lines" all sat beside ivar = 0).
+`sky=None` reproduces the old maps bit for bit, which every checkpoint trained
+before this date expects. **r = 0.3**, chosen on the blind-read objects by
+separating two groups, not by maximising flag precision: of the 28 sky-driven
+flags only **39%** still pass the ≥ 10σ test, while **81/81** confidently read,
+teacher-correct objects keep it; 3.7% of pixels are masked. Flag precision on
+the same 100 (in-sample, a direction only):
+
+| rule | flags | teacher right | precision | teacher wins kept |
+|---|---|---|---|---|
+| as used (no mask) | 100 | 40 | 40% | 100% |
+| **sky mask 0.3** | **71** | **37** | **52%** | **92%** |
+| mask + ≥ 2 lines ≥ 5σ or break ≥ 10σ | 47 | 28 | 60% | 70% |
+
+The remaining false flags are not sky: single real lines (the alias problem —
+one line does not fix z) and continuum-level data defects (negative flux, arm
+ramps, zeroed stretches) that a pixel mask cannot see. Corroboration is kept as
+a **confidence tier, not a filter**, because the cases it drops are mostly
+single-line Lyα quasars the teacher had right (§5: marking is free, refusing is
+not). On all 100,000 deep-tail rows: **224 → 170 flags** (54 dropped, none
+added), **116 tier A** (corroborated) and **54 tier B**
+(`/pscratch/sd/s/shunth/zfm_flags_v2.npz`).
 
 ### What this changes in the model
 
