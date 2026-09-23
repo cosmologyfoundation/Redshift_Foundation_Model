@@ -55,7 +55,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | surface recall loss: the truth must beat the K-th peak | 3 | `--recall` | **built 2026-09-22**; 300k A/B: **no effect** (1.127% → 1.132%, 143 saved / 147 broken, p = 0.86) and the targeted share did not move (truth proposed 74.0% → 72.9%). The term is a **mean over objects and 98% already satisfy it**, so it was 0.002 with a negligible gradient while the 2% tail carries no weight. It did improve the surface — z loss 0.8513 → 0.8253, rank 0.550 → 0.466 — just not where the catastrophics are. Fixed the same day (`--recall_hard`, mean over violators only): the term then bit exactly the right tail — violator fraction 0.1–0.3% in training, matching the 0.3% of objects whose truth is not proposed — and **still moved nothing**: 1.127% → 1.160%, 137 saved / 169 broken, p = 0.076, truth proposed 74.0% → 74.3%. **Recall is limited by information, not by the loss**: on non-alias catastrophics the truth carries **2.43σ** at its own redshift, so there is no signal at the truth to push above the threshold. Both versions improved the fit without touching the tail (z loss 0.8513 → 0.8253 / 0.8405, rank 0.550 → 0.466 / 0.505) |
 | penalty for a predicted line that is absent, or a ≥ 8σ feature left unexplained | 4.3 | — | **not built** as a loss; the reranker receives the information through `--evidence` |
 | per-candidate continuum shape (rest-frame band fluxes) | 5 | — | **not built** — the measured next step for alias errors |
-| bounded (ε-mixture) z loss | 4.4, 6e | — | **not built** — plain NLL |
+| bounded (ε-mixture) z loss | 4.4, 6e | `train.mix_nll`, `--eps` | **built and A/B'd at 150k: no detectable effect; default ε = 0** |
 | proven-wrong labels leave the z loss | 6e | — | **not built** |
 | reader-asserted feature positions enter `S` as a prior | 3 | — | **not built** |
 | confidence output: evidence floor, posterior width, corroboration count | 5 | — | **not built** as outputs; available only as reranker inputs |
@@ -1281,10 +1281,52 @@ Redrock errors (Wilson range 400–5,400), and the flag catches ≥ 51% of 254
    A mixture likelihood `−log[(1−ε)·p(z_label) + ε/N_Z]` with ε ≈ 0.01 does this
    mechanically: once the model puts less than ε/N_Z on a label, its gradient
    toward that label vanishes, so a confident, different answer is no longer
-   pushed back to Redrock's. Whether `zfm/train.py` currently does this was not
-   checked before this section was written — the init identity
-   NLL = ln N_Z + s²/2 used in §4 is that of plain cross-entropy — and it must be
-   read before the next run.
+   pushed back to Redrock's. It was not in `zfm/train.py` (plain cross-entropy).
+   **Built and tested, 2026-09-23** (`results/prereg_eps150k.txt`):
+   `train.mix_nll` applies it to both the z loss (N = N_Z) and the rank loss
+   (N = candidates); ε = 0 is the old loss exactly, and at a logit gap of 30
+   the gradient toward the label falls from 1 to 10⁻⁷. Arms: ε = 0.01 and 0.05,
+   seeds 42 and 43, 150k, against the clip A/B's clamp arms (same config, same
+   draw). New test set `zfm/known_wrong.py`: labels proven wrong without
+   Redrock — 2,022 Gaia-confirmed white dwarfs labelled z > 0.1 — and 110
+   objects my frozen blind reads put against Redrock, with 2,000 at-rest white
+   dwarfs and 157 blind reads that agree with Redrock as controls.
+
+   | | seed 42 base → ε 0.01 → ε 0.05 | seed 43 base → ε 0.01 → ε 0.05 |
+   |---|---|---|
+   | wrong-label WDs answered z = 0 | 85.1 → 83.2 → 81.4% | 80.0 → 76.1 → 82.9% |
+   | wrong-label WDs copying Redrock's z | 5.6 → 4.6 → 3.8% | 7.8 → 7.5 → 5.9% |
+   | at-rest WDs right | 98.5 → 97.7 → 97.8% | 98.0 → 97.5 → 98.0% |
+   | blind: Redrock wrong, model right | 90.9 → 90.9 → 91.8% | 90.0 → 88.2 → 93.6% |
+   | 100k validation catastrophic vs Redrock | 1.240 → 1.233% | 1.278 → 1.237% |
+
+   **The pre-registered McNemar test is invalid on this set, and I only saw it
+   from the baseline.** The two *baselines* — the same loss, different seeds —
+   differ on the 2,022 white dwarfs at **112 vs 214, p = 1.7 × 10⁻⁸**. Those
+   objects are one homogeneous population, so their errors move together, and
+   a second training run moves them all at once. McNemar counts every one as
+   independent evidence. By the letter of the rule, ε = 0.01 "HURTS" on the
+   target (226 / 344, p = 9 × 10⁻⁷) and on the at-rest control (23 / 51,
+   p = 0.0015), and ε = 0.05 splits (104 / 179 and 191 / 133). Measured against
+   the run-to-run spread instead, every change (−1.9, −3.9, −3.7 and +2.9
+   points) is inside the 5.1-point gap between the two baselines. The 100k guard
+   did not move (349 / 301, p = 0.065, if anything toward agreement).
+
+   **Verdict: no detectable effect at 150k; not adopted, default ε = 0.** The one
+   consistent sign is the mechanism's own: all four arms copy Redrock's
+   white-dwarf error less (5.6/7.8% → 4.6/7.5/3.8/5.9%), but what leaves
+   Redrock's answer does not reach z = 0. That is 4 of 4 in one direction
+   (sign test p = 0.125), so it stays a direction. At 150k the baselines copy
+   only 6–8% of these errors in the first place, so there is little
+   memorisation for the loss to remove. The test is worth repeating at a scale
+   where the baseline memorises more, with ≥ 3 seeds per arm, judged against
+   the seed spread.
+
+   **Class-head instability is now the larger defect.** `class_any_bit` across
+   the six 150k runs: 0.846, 0.767, 0.581, 0.447, 0.437 and 0.197. Four of six
+   are far below the healthy ~0.85, whatever the input transform or z loss. It
+   does not show in z, but the class output is not trustworthy until it is
+   fixed.
 3. **A detection output.** For an object with a Redrock z, the model reports
    `P_model(z_Redrock)` — its own posterior mass within tolerance of Redrock's
    answer — alongside its confidence (§5: evidence floor, feature significance
