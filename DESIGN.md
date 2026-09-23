@@ -63,7 +63,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | detection output `P_model(z_Redrock)` with a reason | 6e | `teacher.py` (deep-tail teacher, ≥ 10σ) | **prototype measured 2026-09-22**: blind reading of 100 flags, teacher right 36/45 decidable disputes (80%), Redrock wrong on ≥ 36/100 (≥ 36× the base rate); 28 of 41 undecidable flags were sky residuals — see §6e |
 | sky/artifact mask in the evidence maps | 3, 6e | `evidence.spectrum_maps(sky=0.3)` | **built 2026-09-23**; used for the detection flag (224 → 170; out of sample Redrock wrong on ≥ 46/99, teacher right 78% of decidable disputes). **Not for the reranker**: retrained with masked features, 154 saved / 190 broken, p = 0.059 |
 | eval refuses a headline without the stratification table | 6 | — | **not built** |
-| encoder input without the ±50 clip | 2 | `model.CLIP` | **defect**, measured, not fixed |
+| encoder input without the ±50 clip | 2 | `ZFM(softclip=True)`, `--softclip` | **built and A/B'd, no effect; clamp kept** |
 | label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | — | **not built** |
 | self-distillation from depth (SV3 degraded to main depth) | 7b-2 | `deep_tail.py`, `teacher.py`, `--deep_frac --degrade --teacher` | **built 2026-09-22; neither degradation (182/222) nor teacher labels (130/150) help at 150k** — §7b-2 |
 | confidence calibration on a held-out set | 7b-3 | — | **not built** |
@@ -148,6 +148,40 @@ the clip lives in `ZFM.forward`, in front of the encoder only — bit-identical
 encoder input (`ev_identity.py`: max difference 0.000) — so `evidence.py` reads
 the whole spectrum. Replacing the clip (e.g. a per-spectrum scale) changes the
 encoder's input and needs its own A/B.
+
+**A/B, 2026-09-23: the clip damages the input but not the answer.** `--softclip`
+gives the encoder `50·asinh(x/50)`, which is within 1% of the identity below
+|x| = 12, monotone, and keeps a bright star's shape (2460 → 229 instead of 50).
+The transform is a checkpoint buffer, so every loader applies it without being
+told, and old checkpoints load clamped, bit-identically. Pre-registered in
+`results/prereg_clip150k.txt`: 150k, `--evidence`, d_rr 320, seeds 42 and 43,
+one GPU per arm, 99,424 validation spectra.
+
+- **Redshift: no detectable effect.** Catastrophic 1.240 → 1.257% (seed 42) and
+  1.278 → 1.283% (seed 43); pooled **368 saved / 390 broken, p = 0.45**. The
+  validation z loss moved −0.009 and +0.008, inside the 0.02 guard.
+- **Class: not established.** Seed 42's clamp arm had a **collapsed class head**
+  (`class_any_bit` 19.7% against about 84% for the other three), which alone
+  produces a spurious 4912 saved / 14 broken. The pre-registered rule is met on
+  paper, but only through that broken baseline, so it is not taken. The clean
+  seed, 43: on the 5,197 spectra with more than 1% of pixels clipped, top class
+  95.29 → 95.52%, 16 / 4, p = 0.012, short of the 0.01 threshold; clipped STAR
+  targets 99.96 → 99.88% (0 / 4); unclipped spectra 83.88 → 80.94% (954 / 3672),
+  which is class-head instability between runs, since their inputs barely change.
+- **Why the defect costs nothing.** A spectrum pinned at +50 is itself the
+  signature of a very bright object, and very bright objects are stars: the
+  clamped model calls **99.96% of clipped stars STAR, with 0% catastrophic z**.
+- **Flag: no difference, and my §6e attribution was wrong.** On the same 150k
+  main rows the clamp model flags 279, softclip 258 (219 shared), and flagged
+  rows with more than 1% clipped pixels are 12 vs 15. OBJ085, OBJ135 and OBJ136 —
+  the three bright stars `EV_300000` misplaced — are put at z = 0 and **not
+  flagged by either arm**, clamp included. Their false flags were an error of that
+  one checkpoint, not of the clip.
+
+Decision: **clamp kept** (pre-registered: no detectable effect → do not adopt).
+The softclip code stays available. The finding that matters more is the class
+head: **one seed in four collapsed**, so any class-metric comparison must first
+check `class_any_bit` in every arm.
 
 ---
 
@@ -1223,13 +1257,13 @@ Two recurring Redrock errors among the model-right flags: stars given
 `GALAXY` at z ≈ 1.64–1.69 (7 objects, the model says z = 0), and BGS targets —
 bright galaxies — given z > 1.
 
-**Three of the ten decidable false flags are the ±50 clip (§2).** OBJ085, OBJ135
-and OBJ136 are bright stars (median flux 2460, 1134, 478) with 99.9%, 99.9% and
-93% of pixels clipped; the model saw a flat line at ±50 and put them at z = 0.57,
-0.57 and 2.61, and Redrock is right. The clip defect therefore costs the flag, not
-only the class head. Removing them would give 35/42 = 83%, but that is a
-post-hoc cut on this cohort, so it is a **prediction for the clip-fix A/B**, not a
-result.
+**Three of the ten decidable false flags looked like the ±50 clip — withdrawn.**
+OBJ085, OBJ135 and OBJ136 are bright stars (median flux 2460, 1134, 478) with
+93–99.9% of pixels clipped, which `EV_300000` put at z = 0.57, 0.57 and 2.61. I
+attributed that to the clip and predicted 83% precision once it was fixed. The
+clip A/B (§2) refutes it: a **clamped** 150k model puts all three at z = 0 and does
+not flag them, and softclip changes the number of clipped flagged rows from 12 to
+15, not towards zero. Their false flags belong to that one checkpoint.
 
 Recall is not measured. As an order of magnitude: ~1% of 150,000 is ~1,500
 Redrock errors (Wilson range 400–5,400), and the flag catches ≥ 51% of 254
