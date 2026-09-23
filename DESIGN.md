@@ -1200,6 +1200,41 @@ the reranker's features**. The likely reason is that the reranker already learns
 to discount pixels near low ivar from the √ivar channel, while the fixed 10σ
 test of the flag cannot.
 
+**Generalised to main spectra, 2026-09-23 (`blindmain/`).** The same flag
+(`EV_300000_d320_s42_nc_fn_ev`, sky-masked 10σ strength test) run on 150,000
+main-survey spectra fires on **254 (0.169%)**: STAR 0.059%, BGS 0.200%,
+LRG 0.136%, ELG 0.177%, QSO 0.312% of each target class
+(`/pscratch/sd/s/shunth/zfm_mainflag_merged.npz`). Two independent checks:
+
+- **Gaia, no spectra read.** Of the 34 flags where the model says star, 8 have
+  Gaia astrometry and **all 8 are star-like** (95% CI 63–100%); controls on the
+  same test: stars the model and Redrock both put at rest 98.2% star-like, z > 0.5
+  galaxies 0%.
+- **Blind reading.** 100 flags plus 50 controls, read blind and frozen before the
+  key opened. Controls **45/50** agree with both sides; the 5 misses are all
+  objects I marked `??` (no readable feature), and 39/39 of the rest agree.
+  Candidates: my z sides with the model **51**, Redrock **14**, neither 35; on the
+  decidable ones **35 vs 10 — model right 78% (95% CI 63–89%)**, identical to
+  SV3 deep-tail in-sample 80% and out-of-sample 78%. **Redrock is wrong on at
+  least 51 of 100 main flags**, against a ~1% base rate. The flag does not need
+  SV3 depth to work.
+
+Two recurring Redrock errors among the model-right flags: stars given
+`GALAXY` at z ≈ 1.64–1.69 (7 objects, the model says z = 0), and BGS targets —
+bright galaxies — given z > 1.
+
+**Three of the ten decidable false flags are the ±50 clip (§2).** OBJ085, OBJ135
+and OBJ136 are bright stars (median flux 2460, 1134, 478) with 99.9%, 99.9% and
+93% of pixels clipped; the model saw a flat line at ±50 and put them at z = 0.57,
+0.57 and 2.61, and Redrock is right. The clip defect therefore costs the flag, not
+only the class head. Removing them would give 35/42 = 83%, but that is a
+post-hoc cut on this cohort, so it is a **prediction for the clip-fix A/B**, not a
+result.
+
+Recall is not measured. As an order of magnitude: ~1% of 150,000 is ~1,500
+Redrock errors (Wilson range 400–5,400), and the flag catches ≥ 51% of 254
+≈ 130, so it finds roughly a tenth of them. The flag is precise, not complete.
+
 ### What this changes in the model
 
 1. **Proven-wrong labels leave the redshift loss and become the detection test
