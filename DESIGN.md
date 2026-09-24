@@ -1677,12 +1677,19 @@ Three objectives, none needing a label:
    the encoder the two instruments the reader used, which is what §0 measurement
    3 says the scoring lacked.
 
-**Data.** Because no label is needed, pre-training **can include the
-`ZWARN ≠ 0` objects** — the 1.22 M `ZWARN = 4` spectra the selection removes
-(§6b), which the model has never seen and which are exactly the objects Redrock
-was unsure of. Dropping a filter is not learning from Redrock. It needs a new h5
-build. Train across surveys (DESI + SDSS), SNR regimes and arms, so that what
-transfers is instrument-independent.
+**Data: `ZWARN = 0` only, like every other draw.** The owner's standing rule,
+set 2026-09-02, is that every object selection takes `ZWARN = 0`, with no
+exceptions. An earlier version of this section proposed adding the 1.22 M
+`ZWARN = 4` spectra to pre-training, on the argument that the rule exists to keep
+the answer key trustworthy and pre-training uses no answer key. That was a
+proposal, not a decision. It contradicted the rule and is withdrawn. Including
+`ZWARN ≠ 0` needs the owner's explicit decision. If it is ever asked for, the
+case against it has to be weighed too: some of those spectra are data defects
+(no data, little coverage, poor data), not just hard objects, and they would be
+reconstruction *targets*. Pre-training therefore uses the existing
+`dr1_*_zwarn0_brz.h5` files, with nothing new to build. Train across surveys
+(DESI + SDSS), SNR regimes and arms, so that what transfers is
+instrument-independent.
 
 **Excluded.** No AION weights or methods (hard rule; §6c records the one scoped
 exception, which is a scored baseline only). No free-latent autoencoder: a free
