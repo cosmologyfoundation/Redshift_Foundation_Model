@@ -262,6 +262,52 @@ better choice of candidate: what decides catastrophic is the reranker's pick.
 This is 150k with three seeds; whether the 7.7% survives at larger D is
 untested.
 
+**Agreement on corroborated labels, and sub-bin NMAD, 2026-09-23
+(`results/prereg_agree.txt`, `agree_eval.py`, `agree_corr_fix.py`).** This is
+evaluation only, on the 99,424-spectrum validation set, and filters neither
+training nor the headline. "Corroborated" is judged by our own evidence maps at
+the label z (sky mask 0.3), never by DELTACHI2, ZWARN or SPECTYPE. A label is
+corroborated if it meets any of:
+
+- A: two or more lines at ≥ 8σ;
+- B: a break at ≥ 6σ plus one line present at ≥ 3σ;
+- C: three or more absorption lines present at ≥ 3σ;
+
+and, in every case, no feature at ≥ 8σ is left unexplained.
+
+*A definition bug, caught before reporting.* The first pass used `n_abs<=-3` as
+"absorption lines present". It actually counts absorption-type lines seen **in
+emission**, which are lines that contradict the z. Route C therefore never fired,
+and route B admitted contradictions as support. The fixed pass reads the
+per-line values instead.
+
+| subset (coverage) | model | catastrophic | NMAD, grid bin | NMAD, sub-bin |
+|---|---|---|---|---|
+| all (100%) | AdamW ×3 | 1.219–1.290% | 6.60–6.69e-5 | 2.54–2.68e-5 (7.6–8.0 km/s) |
+| all (100%) | Muon 1e-3 ×3 | 1.135–1.194% | 6.48–6.54e-5 | **2.47–2.52e-5 (7.4–7.5 km/s)** |
+| z < 1.6 (95.6%) | Muon 1e-3 ×3 | 0.994–1.052% | 6.22–6.26e-5 | 2.28–2.34e-5 (6.8–7.0 km/s) |
+| z < 1.6 & corroborated (44.2%) | AdamW ×3 | 0.068–0.086% | 6.06–6.14e-5 | 2.06–2.21e-5 |
+| z < 1.6 & corroborated (44.2%) | Muon 1e-3 ×3 | **0.050–0.084%** | 5.96–5.99e-5 | **2.02–2.07e-5 (6.0–6.2 km/s)** |
+
+Coverage of the corroborated set by target class: STAR 49.9%, BGS 56.1%, LRG
+57.8%, ELG 20.4% and QSO 12.5%. Catastrophic within it is STAR 0.018%, BGS
+0.059%, LRG 0.102%, ELG 0.067% and QSO 0.257%, against 0.16–3.9% overall.
+
+- **Where the label is corroborated, the model disagrees with Redrock on about
+  1 in 1,500.** The pre-registered expectation was 0.2–0.4%, so this is
+  3–5× better than predicted. Muon and AdamW overlap here, with about 25–35
+  errors per arm, so the corroborated set cannot separate them.
+- **Sub-bin interpolation is the precision fix, and it costs no training.** A
+  parabola through `logp_z` at the chosen bin ±1 takes NMAD from 6.5e-5 to
+  **2.5e-5** on everything (7.5 km/s) and to 2.0e-5 on the corroborated set
+  (6.1 km/s). The prediction was 3–4e-5. Catastrophic is unchanged by
+  construction, because the offset is at most half a bin. **Adopted as the
+  default read-out.**
+- **NMAD against Redrock is now at Redrock's own quoted error.** The median
+  ZERR/(1+z) is 2.15e-5 (6.4 km/s; GALAXY 8.3, STAR 1.1, QSO 47.5), so a
+  further gain would not show in this metric. True precision from here needs
+  Redrock-free truth: repeat spectra of the same target.
+
 ---
 
 ## 3. Architecture — and the one thing v2 changes
