@@ -51,6 +51,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | reranker reads **what else is true at each candidate z**: the 4000 Å break, every line's narrow and broad σ, corroboration counts, the strongest unexplained peak, the evidence floor, brightness | 3, 5 | `evidence.py`, `--evidence` | **built 2026-09-22**; validated against `speclib.py` (break r = 1.0000, line r = 0.9946). **A/B at 300k, two seeds: HELPS** (pre-registered, `results/prereg_ev.txt`) — catastrophic 1.169/1.181% → 1.089/1.117%, **229 saved / 157 broken, McNemar p = 2.9 × 10⁻⁴**; QSO 38/14, LRG 23/12, ELG 107/87 |
 | dense z loss over the whole grid | 4.1 | `train.py` | built |
 | multi-label BCE on the target bits | 4.5 | `train.py` | built; **superseded 2026-09-23** by the class head below |
+| Muon on hidden 2-D matrices, AdamW on the rest (`--muon --muon_lr 1e-3`) | 2 | `train.py` | **built and adopted 2026-09-23**: catastrophic 1.200 → 1.108% (3 seeds each, every Muon seed below every AdamW seed) |
 | learned class head (pooled encoder + detached surface summary, softmax CE on normalised target bits) | 2, 4.5 | `ZFM(class_head=True)`, `--class_head`, `train.class_ce` | **built and adopted 2026-09-23**: `class_any_bit` 0.197/0.846/0.601 → 0.927/0.920/0.923, z unchanged |
 | cross-class alias negatives | 4.2 | `alias.py`, `--alias` | **built 2026-09-22**; 30k check: trains (margin 1.26 → 0.009) but does **not** move the targeted alias share — see §5 |
 | surface recall loss: the truth must beat the K-th peak | 3 | `--recall` | **built 2026-09-22**; 300k A/B: **no effect** (1.127% → 1.132%, 143 saved / 147 broken, p = 0.86) and the targeted share did not move (truth proposed 74.0% → 72.9%). The term is a **mean over objects and 98% already satisfy it**, so it was 0.002 with a negligible gradient while the 2% tail carries no weight. It did improve the surface — z loss 0.8513 → 0.8253, rank 0.550 → 0.466 — just not where the catastrophics are. Fixed the same day (`--recall_hard`, mean over violators only): the term then bit exactly the right tail — violator fraction 0.1–0.3% in training, matching the 0.3% of objects whose truth is not proposed — and **still moved nothing**: 1.127% → 1.160%, 137 saved / 169 broken, p = 0.076, truth proposed 74.0% → 74.3%. **Recall is limited by information, not by the loss**: on non-alias catastrophics the truth carries **2.43σ** at its own redshift, so there is no signal at the truth to push above the threshold. Both versions improved the fit without touching the tail (z loss 0.8513 → 0.8253 / 0.8405, rank 0.550 → 0.466 / 0.505) |
@@ -239,6 +240,27 @@ better. The one lr-1e-3 run is better on every column: catastrophic 1.076%,
 val z 0.925, train z 0.895. That is one seed, so it is a direction only, and the
 direction is that 3e-4 under-drove the Muon matrices. The Newton-Schulz cost is
 2% of wall time.
+
+**Muon at lr 1e-3, confirmed (`results/prereg_muon1e3_150k.txt`).** Seeds 43
+and 44 were added to the seed-42 run that prompted the test, with an lr-3e-3
+bracket on two seeds.
+
+| | catastrophic | val z loss | train z loss | `class_any_bit` |
+|---|---|---|---|---|
+| AdamW, seeds 42/43/44 | 1.172 / 1.236 / 1.194% (mean 1.200) | 0.947 mean | 0.915 / 0.879 / 1.077 | 0.920–0.927 |
+| Muon lr 1e-3, seeds 42/43/44 | **1.076 / 1.132 / 1.118% (mean 1.108)** | **0.931 mean** | 0.895 / 0.853 / 1.066 | 0.930–0.946 |
+| Muon lr 3e-3, seeds 42/43 | 1.104 / 1.178% | **0.874 mean** | 0.839 / 0.793 | 0.942–0.947 |
+
+**Pre-registered verdict: HELPS.** Every lr-1e-3 seed is below every AdamW seed
+on catastrophic, −7.7% relative, and the mean val z loss is lower. The verdict
+does not depend on the seed that prompted the test: with only seeds 43 and 44,
+catastrophic is 1.118–1.132% against 1.172–1.236%, and val z is 0.933 against
+0.947. **Adopted: `--muon --muon_lr 1e-3`.** At lr 3e-3 the dense surface fits
+much better — val z 0.874, train z lowest — but catastrophic does not improve
+further, and one seed, 1.178%, overlaps AdamW. A better-fitted surface is not a
+better choice of candidate: what decides catastrophic is the reranker's pick.
+This is 150k with three seeds; whether the 7.7% survives at larger D is
+untested.
 
 ---
 
