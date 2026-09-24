@@ -308,6 +308,29 @@ Coverage of the corroborated set by target class: STAR 49.9%, BGS 56.1%, LRG
   further gain would not show in this metric. True precision from here needs
   Redrock-free truth: repeat spectra of the same target.
 
+**SwiGLU, 2026-09-23 (`results/prereg_swiglu150k.txt`).** `--swiglu_rr` swaps
+the reranker FFN from ReLU at 4d to SwiGLU with hidden width 8d/3 (856),
++0.24% parameters. `--swiglu_enc` does the same to the ConvNeXt MLP (hidden
+1024, parameter-exact) and was run on one seed only. Both sit on the adopted
+config (`--class_head --muon --muon_lr 1e-3`), 150k, and the new matrices stay
+under Muon.
+
+| | catastrophic | val z loss | minutes |
+|---|---|---|---|
+| baseline, seeds 42/43/44 | 1.076 / 1.132 / 1.118% (mean 1.108) | 0.931 | 36.3 |
+| SwiGLU reranker, seeds 42/43/44 | 1.096 / 1.108 / 1.112% (mean 1.105) | 0.929 | 36.3 |
+| SwiGLU encoder + reranker, seed 42 | 1.102% | **0.879** | 40.6 |
+
+**Verdict: no detectable effect; not adopted.** Swapping the reranker FFN
+changes nothing beyond seed noise. The encoder swap repeats the lr-3e-3
+pattern: the dense surface fits markedly better, with val z 0.879 against
+0.925 on the same seed. Catastrophic does not improve (1.102% against 1.076%),
+and the run costs 12% more time. Three changes now agree — Muon at 3e-3,
+SwiGLU in the encoder, and, earlier, capacity — that **a better-fitted surface
+does not buy a better pick**. The remaining catastrophic is decided at ranking
+and is information-limited, as §5 found for ELG. It is not limited by the
+optimiser or by the activation. The flags stay available.
+
 ---
 
 ## 3. Architecture — and the one thing v2 changes
