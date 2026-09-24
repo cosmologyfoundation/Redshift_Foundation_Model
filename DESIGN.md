@@ -1697,6 +1697,45 @@ latent hides the answer where it cannot be checked, and every real gain in this
 project came from rendering something and looking at it. The validation set and
 the Gaia-proven set are excluded **by `TARGETID`** from pre-training as well.
 
+**First run, 2026-09-23 (`results/prereg_pretrain300k.txt`, `zfm/pretrain.py`).**
+
+*Known shift was dropped before it ran, and the reason matters.* On coadded
+spectra the two views share **one noise realisation**, so matching that noise
+solves the task without any signal. Pure-noise twins of 512 validation spectra
+— the same ivar, no signal at all — were solved **100%** at up to 3σ of added
+noise, 59% at 5σ and 12% at 7σ. A random-init encoder already scored 92% on
+real spectra. A clean shift task needs two independent exposures of the same
+target. The owner decided to run masked reconstruction only.
+
+*Masked reconstruction.* 300k spectra drawn in survey proportion
+(`Spectra(labelfree=True)`: no Z-based filter, and no z or class returned;
+ZWARN = 0 files; validation blocks, eye-read targets and 4,471 known-wrong or
+blind-read TARGETIDs excluded). About 15% of pixels are hidden in 32-px spans,
+and the model predicts F·√V in noise units with a Huber loss. Optimiser:
+Muon + AdamW. The run took 17 min on 4 GPUs. Held-out reconstruction loss is
+**9.3% of the predict-zero reference** (0.463 against 4.962). The encoder then
+initialised the adopted supervised config at 150k (`--init_enc`), against the
+scratch runs:
+
+| | catastrophic | val z loss | train z loss | NMAD, grid bin |
+|---|---|---|---|---|
+| scratch, seeds 42/43/44 | 1.076 / 1.132 / 1.118% (mean 1.108) | 0.925 / 0.942 / 0.925 | 0.895 / 0.853 / 1.066 | 6.43–6.49e-5 |
+| pre-trained, seeds 42/43/44 | 1.076 / 1.178 / 1.142% (mean 1.132) | **0.830 / 0.823 / 0.820** | 0.812 / 0.744 / 0.965 | **6.26–6.28e-5** |
+| pre-trained, seed 45 (no scratch twin) | 1.086% | 0.816 | 0.923 | 6.25e-5 |
+
+**Pre-registered verdict: no detectable effect on catastrophic.** Pre-training
+still changes the model a great deal. Validation z loss falls **11%** in every
+seed (0.931 → 0.824). That is the largest change to it this week and far
+outside the seed spread. The grid-bin NMAD improves in every seed, and the
+first 200 steps start at z loss 4.9–5.3 against 6.3–6.7 from scratch. So the
+encoder has learned the spectra, and the redshift surface built on it is
+markedly better. **This is the fourth time a better surface has not produced a
+better pick** (after Muon at 3e-3, SwiGLU in the encoder, and capacity). The
+next step is not another objective. It is to find where the surface's
+improvement is lost: whether the truth now appears among the reranker's
+candidates more often, or ranks higher among them, while the final argmax is
+unchanged (`diag_alias.py`'s truth-proposed rate and rank, on these arms).
+
 ### 7b. Post-train — from a foundation to beating Redrock
 
 Three steps, in this order:
