@@ -216,6 +216,30 @@ it: 2.30–2.49, where five sigmoids at zero give 0.69.
   head sits about 0.03 below the linear-probe ceiling of 0.95, so its input and
   width are not yet the limit worth chasing.
 
+**Muon+AdamW, 2026-09-23 (`results/prereg_muon150k.txt`).** `--muon` puts
+`torch.optim.Muon` (momentum 0.95, Nesterov, 5 Newton-Schulz steps,
+`match_rms_adamw`, the same lr and one-cycle schedule) on the 56 hidden 2-D
+matrices, 23.99M parameters: the ConvNeXt MLPs and the reranker's attention and
+FFN. AdamW stays on the other 6.64M, including the archetype bank, which is a
+set of spectra rather than a map between feature spaces. The runs used
+`--class_head`, with the class-head runs as the baseline, 150k, three seeds.
+
+| | catastrophic | val z loss | train z loss | `class_any_bit` | minutes |
+|---|---|---|---|---|---|
+| AdamW, seeds 42/43/44 | 1.172 / 1.236 / 1.194% | 0.933 / 0.971 / 0.937 | 0.915 / 0.879 / 1.077 | 0.927 / 0.920 / 0.923 | 35.6 |
+| Muon lr 3e-4, seeds 42/43/44 | **1.130 / 1.124 / 1.110%** | 1.001 / 1.033 / 1.007 | 0.977 / 0.934 / 1.148 | 0.944 / 0.927 / 0.945 | 36.3 |
+| Muon lr 1e-3, seed 42 | **1.076%** | **0.925** | **0.895** | 0.946 | 36.2 |
+
+**Pre-registered verdict: no detectable effect, not adopted.** Every Muon seed
+is below every AdamW seed on catastrophic (mean 1.200 → 1.121%, −6.6%; the
+chance of that ordering is 1/20). But the rule also required a lower val z loss,
+and that went the other way (0.947 → 1.013). At lr 3e-4, Muon fits the dense
+redshift surface *worse* — train z loss is higher too — while the reranker picks
+better. The one lr-1e-3 run is better on every column: catastrophic 1.076%,
+val z 0.925, train z 0.895. That is one seed, so it is a direction only, and the
+direction is that 3e-4 under-drove the Muon matrices. The Newton-Schulz cost is
+2% of wall time.
+
 ---
 
 ## 3. Architecture — and the one thing v2 changes
