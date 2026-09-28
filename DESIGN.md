@@ -1215,6 +1215,25 @@ hard objects and flatter every number.
 
 ---
 
+### 6d-2. Recorded exception: Redrock fields may filter training rows (owner, 2026-09-27)
+
+> 「我只是要刪除那些可能會有錯的資料 / 可以用任何 redrock的資料來篩選 / 是要盡可能刪除有錯的資料」
+
+Before training, the owner wants the labels as clean as possible, and allows
+**any Redrock field** — DELTACHI2, ZERR, SPECTYPE, CHI2 and so on — to decide
+which training rows are **deleted**. The scope is filtering only:
+
+- the fields never become model inputs;
+- they never select blind cohorts;
+- they are never a source of the model's rules;
+- the ZWARN = 0 rule stays;
+- validation is never filtered, so its cost stays visible (§6d).
+
+The filter is judged by how many **known-wrong** labels it removes per unit of
+data lost. The known-wrong sets are the Gaia-proven white dwarfs and the
+blind-read Redrock errors, with at-rest and blind-agreeing controls. Its cost is
+reported per class, because a cut removes hard ELG and QSO first.
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
