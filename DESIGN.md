@@ -1307,6 +1307,36 @@ unchanged.
   on the full set. The known-wrong sets (`known_wrong.py`) stay the check on
   whether a model has stopped copying Redrock's errors.
 
+**Training on the cleaned data, 300k (2026-09-28, `results/prereg_clean300k.txt`).**
+Adopted config: `--class_head --muon --muon_lr 1e-3`, evidence reranker, one GPU
+per run. Two arms, clean (`C3`) and original (`O3`), seeds 42 and 43. Figures are
+at `/pscratch/sd/s/shunth/figs/pred60k_cv_C3_*`.
+
+| | clean s42 | clean s43 | original s42 | original s43 |
+|---|---|---|---|---|
+| 60k **clean** validation: catastrophic | 0.458% | 0.451% | 0.428% | 0.453% |
+| 60k clean validation: NMAD, sub-bin | 2.05e-5 | 2.05e-5 | 2.19e-5 | 2.15e-5 |
+| 50k unfiltered validation: catastrophic | 1.112% | 1.096% | 1.042% | 1.048% |
+| Gaia-proven wrong-z white dwarfs: answered z = 0 / **copies Redrock** | 79.6 / **5.4%** | 80.3 / **4.1%** | 80.1 / 9.4% | 57.2 / 19.5% |
+| blind-read Redrock errors: model right | 79.1% | 77.3% | 82.7% | 80.0% |
+
+Clean-validation catastrophic by target class (clean s42): STAR 0.00%, BGS
+0.36%, LRG 0.40%, ELG 0.65%, QSO 1.62%.
+
+- **The drop to 0.45% is mostly the validation set, not the model.** Every arm,
+  including those trained on the original data, scores 0.43–0.46% on the
+  cleaned validation rows, against 1.04–1.11% on the unfiltered set. Deleting
+  3% of rows removed about 60% of the disagreements with Redrock.
+- **Training on clean data does not lower catastrophic on either validation
+  set.** On the unfiltered set it is slightly higher (1.10 against 1.05%): the
+  deleted rows are hard ones the model no longer trains on.
+- **It does stop the model copying the white-dwarf errors.** It copies them
+  4–5%, against 9–20% trained on the original data (seed 43 copied 19.5% and put
+  only 57% at z = 0). This is the direction the cleaning targets: rule A deleted
+  100% of these labels. It rests on 2 seeds, so it is a direction. It is not
+  seen on the blind-read errors, which the catalogue rule mostly cannot find.
+- NMAD improves slightly in both clean seeds (2.05 against 2.15–2.19e-5).
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
