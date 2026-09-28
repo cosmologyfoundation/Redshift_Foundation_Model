@@ -1234,6 +1234,39 @@ data lost. The known-wrong sets are the Gaia-proven white dwarfs and the
 blind-read Redrock errors, with at-rest and blind-agreeing controls. Its cost is
 reported per class, because a cut removes hard ELG and QSO first.
 
+**First filter, catalogue only (2026-09-27, `~/claude_learning_map/clean/`).**
+`clean_labels.py` reads the full DR1 zcatalog (`zall-pix-iron`, 28,425,963
+spectra) and maps per-spectrum evidence onto every row of both training files by
+(TARGETID, SURVEY, PROGRAM), with 100% matched. The output is
+`/pscratch/sd/s/shunth/zfm_clean_{main,sv3}.npz`, with continuous values kept so
+the rule can change later. `calibrate.py` scores each criterion on the
+known-wrong sets and their controls:
+
+| criterion | Gaia-proven WD wrong (2,022) | blind: Redrock wrong (110) | WD at rest (2,000) | blind: Redrock right (157) | main rows removed |
+|---|---|---|---|---|---|
+| another independent coadd disagrees by > 0.01(1+z) | 6.6% | 11.8% | 0.5% | 0.0% | 0.014% |
+| Gaia star-like (catalogue PM/parallax, error from G), z > 0.01 | 98.9% | 7.3% | 0.0% | 0.0% | 0.082% |
+| star-only target, z > 0.1 | 100% | 6.4% | 0.0% | 0.0% | 0.061% |
+| reduced χ² top 0.1% | 2.0% | 6.4% | 0.1% | 1.3% | 0.082% |
+| ZERR top 0.1% | 0.0% | 0.0% | 2.2% | 0.0% | 0.100% — **no signal** |
+| DELTACHI2 < 15 / 25 / 40 / 100 | 14.6 / 30.8 / 45.7 / 68.6% | 2.7 / 13.6 / 20.0 / 42.7% | 0.4 / 1.0 / 2.2 / 6.1% | 0 / 0 / 1.3 / 8.9% | 1.4 / 3.2 / 5.9 / 16.8% |
+
+The Gaia test uses catalogue values with the error approximated from G. It
+flags 0.064% of 168,077 extragalactic QSO targets at 1.45 < z < 1.70, so false
+positives are negligible.
+
+- **Rule A** — repeat disagreement, Gaia star-like, or star-only target at
+  z > 0.1. It removes **0.116%** of main and 0.369% of sv3. It catches 100% of
+  the proven-wrong white dwarfs and 18.2% of the blind-read Redrock errors, and
+  touches 0.5% and 0.0% of the two controls.
+- **Rule A + DELTACHI2 < 25** removes **3.32%** of main. It raises the
+  blind-error catch only from 18.2% to 30.0%, and the cost falls on the hard
+  classes: 10.6% of ELG-only and 8.1% of QSO-only rows. Redrock's confident
+  errors, the kind §6e exists to catch, have high DELTACHI2 by definition.
+- **Where the other ~70% of errors hide:** they are confident line
+  misidentifications that no catalogue field reveals. Removing them needs the
+  spectra, through our evidence contradictions and the detection flag.
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
