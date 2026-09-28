@@ -1297,6 +1297,15 @@ unchanged.
   - none were deleted rows;
   - no TARGETID overlapped the 107,776 validation targets;
   - 100 spectra were identical to the original rows.
+- **Validation is cleaned too (owner, 2026-09-28: 「驗證的也要從乾淨的挑」).** This
+  reverses the "validation is never filtered" line above for this data.
+  `Spectra(val=True, clean=True)` (`agree_eval.py --clean_val`) takes the SAME
+  original validation blocks minus the rows the cleaning deleted: 107,720 →
+  104,455, a 3.03% cut. It stays disjoint from training (`zfm/test_clean_val.py`).
+  Consequence to keep in view: on a cleaned validation set, agreement with
+  Redrock is measured where Redrock is more often right, so it reads better than
+  on the full set. The known-wrong sets (`known_wrong.py`) stay the check on
+  whether a model has stopped copying Redrock's errors.
 
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
