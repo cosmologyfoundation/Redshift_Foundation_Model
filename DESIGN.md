@@ -1289,8 +1289,14 @@ unchanged.
   are identical in all 60 datasets.
 - **Training must not take validation from these files.** Validation stays on
   the original files' fixed blocks, unfiltered. Training rows whose `SRC_ROW`
-  falls in a validation block must be excluded; `data.py` needs this before
-  its first use.
+  falls in a validation block must be excluded. **Built 2026-09-27:**
+  `Spectra(clean=True)` / `train.py --clean`. It refuses `val=True` and `deep`,
+  and drops a cleaned row whose `SRC_ROW // 256` is an original validation block.
+  `zfm/test_clean_data.py` checked this on 40,000 draws:
+  - none came from the 400 + 21 validation blocks;
+  - none were deleted rows;
+  - no TARGETID overlapped the 107,776 validation targets;
+  - 100 spectra were identical to the original rows.
 
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
