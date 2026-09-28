@@ -1267,6 +1267,31 @@ positives are negligible.
   misidentifications that no catalogue field reveals. Removing them needs the
   spectra, through our evidence contradictions and the detection flag.
 
+**Cleaned copies written (owner's choice: rule A + DELTACHI2 < 25, 2026-09-27;
+`clean/make_clean_h5.py`).** The source files are opened read-only and are
+unchanged.
+
+| file | source rows | deleted | kept | size |
+|---|---|---|---|---|
+| `dr1_main_primary_tgt_zwarn0_clean_brz.h5` | 18,659,804 | 619,723 (3.321%) | 18,040,081 | 1,020.9 GB |
+| `dr1_sv3_primary_tgt_zwarn0_clean_brz.h5` | 992,821 | 27,305 (2.750%) | 965,516 | 54.7 GB |
+
+- **What is carried over.** Every dataset, dtype, chunk shape and attribute is
+  copied, and rows stay in source order. Two things are added: `SRC_ROW`, each
+  row's index in the source, and `CLEAN_*` file attributes giving the rule and
+  the counts.
+- **One deliberate difference.** `BRZ_*` are deflate-1, not LZF, so the workers
+  can compress in parallel. The first single-writer LZF version ran at 650
+  rows/s, about 8 h for main; this one runs at about 7,000 rows/s, 44 min. The
+  values are unchanged.
+- **Verified before rename.** `SRC_ROW` and the TARGETID order match; no
+  DELTACHI2 < 25 row survives; and 502 rows, including the first and the last,
+  are identical in all 60 datasets.
+- **Training must not take validation from these files.** Validation stays on
+  the original files' fixed blocks, unfiltered. Training rows whose `SRC_ROW`
+  falls in a validation block must be excluded; `data.py` needs this before
+  its first use.
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
