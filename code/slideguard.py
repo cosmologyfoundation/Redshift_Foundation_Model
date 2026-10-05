@@ -40,6 +40,36 @@ def check_text(text, where='slide', require_identity=True):
     return text
 
 
+def check_confusion(title, M, where='matrix'):
+    """Refuse a confusion-matrix caption that quotes a score the matrix does
+    not show.
+
+    Correction 22.  The cohort18 summary panel was titled "type: 47/50 vs
+    SPECTYPE, 44/50 for the target bits" over a matrix whose axes are the DESI
+    target bits and Opus 5, and whose diagonal is 47.  The 44 is a THIRD
+    quantity -- the target bits against Redrock's SPECTYPE -- on an axis the
+    figure never draws.  A reader counting the cells cannot reach 44, and asked
+    where it came from.
+
+    So: any "a / n" in a matrix caption, where n is the matrix total, must have
+    a equal to the diagonal.  A number from an undrawn axis has to be labelled
+    somewhere other than the title of the matrix.
+    """
+    n = int(M.sum()) if hasattr(M, 'sum') else sum(map(sum, M))
+    diag = int(sum(M[i][i] for i in range(len(M)))) if not hasattr(M, 'trace') \
+        else int(M.trace())
+    bad = [(int(a), int(b)) for a, b in
+           re.findall(r'(\d+)\s*/\s*(\d+)', title)
+           if int(b) == n and int(a) != diag]
+    if bad:
+        raise SystemExit(
+            '%s: the caption quotes %s over a matrix whose diagonal is %d out '
+            'of %d. A score from an axis the matrix does not draw cannot go in '
+            'its title -- name that axis separately.'
+            % (where, ', '.join('%d/%d' % t for t in bad), diag, n))
+    return title
+
+
 def check_file(path):
     """Scan a slide-generator source for banned labels.  Returns a count."""
     src = open(path, encoding='utf-8').read()
