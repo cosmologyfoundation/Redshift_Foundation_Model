@@ -11,13 +11,18 @@ selects which template family is fitted, and the fit gives the redshift.
 
 ## Start here
 
-**[`RULE.md`](RULE.md)** is the operating checklist — the four-step decision
-order for the five classes, how the redshift is measured, and a corrections log
-in which every rule is traced to the error that bought it. It is meant to be
-read before looking at any spectrum.
+**[`METHOD.md`](METHOD.md)** describes how the type is read and the redshift
+is measured. Each rule comes with the measurement behind it, along with the
+negative results and what was tried and rejected.
 
-`METHOD.md` is the long form: the same procedure with the measurements behind
-each rule, the negative results, and what was tried and rejected.
+**[`RULE.md`](RULE.md)** records what is enforced, and in code, and the
+corrections log traces every rule to the error that bought it. It is **not** a
+checklist to read before judging a spectrum. Reading it first was measured to
+spread a wrong rule more than reading without it did.
+
+**[`DESIGN.md`](DESIGN.md)** describes the model being built (zfm). That covers
+its architecture, loss, and evaluation, plus how its training labels are
+cleaned. Every constraint carries the measurement that forces it.
 
 ## Results
 
@@ -26,9 +31,10 @@ ever repeated across cohorts. In each, the reference redshifts and types were wr
 file at mode 600 during the build and opened **once**, after every call was
 already on disk.
 
-Tests IV–IX are `main`; tests X–XIII are on `SV3`, a deeper survey — its
-galaxies and quasars have 2–4× the per-pixel SNR, so the SV3 columns are not
-comparable to the `main` ones and are kept in a separate table.
+Tests IV–IX are `main`; tests X–XIII are on `SV3`, a deeper survey. The
+median depth ratio (TSNR2) is 1.29× for ELG and LRG, 1.77× for BGS and 2.23×
+for QSO; only its deepest tail reaches 2–4×. The SV3 columns are therefore not
+directly comparable to the `main` ones and are kept in a separate table.
 
 | | IV | V | VI | VII | VIII | IX | tests VI–IX |
 |---|---|---|---|---|---|---|---|
@@ -109,16 +115,65 @@ residual**.
 
 ---
 
+## Which Redrock redshifts to trust: cleaning the training labels
+
+zfm is trained on Redrock redshifts, and about 1% of `ZWARN == 0` labels are
+wrong. A model that learns them copies them. `code/rrwrong/` learns to say
+when a Redrock redshift is wrong, and the training data is rebuilt without the
+labels it distrusts. The full record is in
+[`DESIGN.md` §6d-3](DESIGN.md#6d-3-clean-v2-a-learned-redrock-error-filter-owner-2026-09-28).
+
+- **Truth it learns from.** DESI EDR visual inspection, 18,653 targets
+  (Lan et al. 2022, arXiv:2208.08516; Alexander et al. 2022, arXiv:2208.08517),
+  with Redrock re-run at SV1 per-night depth, which is close to main-survey
+  depth.
+- **Inputs.** Redrock's own fit quality (DELTACHI2, χ²/pixel, ZERR, template
+  coefficients, z, SPECTYPE), imaging photometry, Gaia, and the target bits.
+- **Checked against data it never saw.** Each test compares the model with
+  DELTACHI2 alone, keeping the same number of rows:
+
+  | test | DELTACHI2 alone | rrwrong |
+  |---|---|---|
+  | 1.0M main targets on two tiles: wrong-pair rate | 0.73% | 0.16% |
+  | 2,022 Gaia-confirmed stars Redrock placed at z > 0.1: removed | 31% | 100% |
+  | 110 blind-read Redrock errors: removed | 14% | 78% |
+
+- **The clean-2 training set** removes a row if any of three rules holds: a
+  repeat observation disagrees or Gaia says it is a star; DELTACHI2 < 25; or
+  P_WRONG > 0.01. It deletes 6.6% of main (17.43M rows kept). The backup
+  program is exempt: no inspected spectra cover it, and there the model
+  flagged 72% of Gaia-confirmed stars.
+
+Scored on 60,032 validation spectra, zfm disagrees with Redrock on 727
+(1.21%). On a fresh 60,032 drawn from the filtered set it disagrees on 36
+(0.060%), and NMAD of Δz/(1+z) stays 2.0e-05. **What changed is the
+reference, not zfm.** Most of the disagreements sat on doubtful Redrock
+labels. Where Redrock is proven wrong, zfm is right on 80% of the
+Gaia-confirmed stars and 77% of the blind-read errors.
+
+<p align="center">
+  <img src="figures/clean2_s1_before.png" width="49%">
+  <img src="figures/clean2_s2_after.png" width="49%">
+</p>
+
+The rule-by-rule breakdown and the per-class figures (STAR, BGS, LRG, ELG,
+QSO) are in `figures/clean2_s3_filter.png`, `clean2_s4_before_by_class.png`
+and `clean2_s5_after_by_class.png`.
+
+---
+
 ## What's here
 
 | path | what it is |
 |---|---|
 | **[METHOD.md](METHOD.md)** | how the type is read and the redshift is measured — start here |
 | **[report/redshift_report.html](report/redshift_report.html)** | the full report, 36 sections, 24 figures. Open in a browser |
-| `DESIGN.md` | **the model to be built**: architecture, loss, refusal and evaluation, each constraint carrying the measurement that forces it |
+| `DESIGN.md` | **the model to be built**: architecture, loss, refusal and evaluation, each constraint carrying the measurement that forces it; §6d covers training-label cleaning |
+| `RULE.md` | what is enforced and the corrections log (a record, not a pre-read checklist) |
 | `report/redshift_report.ipynb` | the same, executed, with all code |
-| `figures/` | the headline figures from both blind tests |
+| `figures/` | `c2_*`, `c3_*`: blind-test headline figures; `clean2_*`: the label-cleaning results |
 | `code/` | the measurement path and the blind-test tooling |
+| `code/rrwrong/` | the learned Redrock-error filter, its validation, and the clean-2 builder (see its README) |
 
 ### Code
 
@@ -130,10 +185,13 @@ residual**.
 | `methodc.py` | two-stage fit: candidate generation, then decision on a common data vector |
 | `d4000.py` | 4000 Å break candidate generation |
 | `make_cohort.py` | builds a blind cohort and writes the sealed key |
-| `measure3.py` | fits the family the visual call selected; assigns BGS/LRG from the fitted z |
+| `make_cohort_h5.py`, `h5pick.py` | the same from the DR1 BRZ h5 files ("sv3" → SV3 file, otherwise main), with non-repeating draws |
+| `measure3.py` | fits the family the visual call selected; the call is five-way (STAR / BGS / LRG / ELG / QSO), a trailing `?` marks a guess |
 | `final3.py` | opens the sealed key once, scores, draws the figures |
 | `zoom.py` | four-width diagnostic for spectra too faint to read from flux |
 | `check.py` | asserts the cohort invariants; exits non-zero if broken |
+| `slideguard.py` | refuses figure text that breaks a reporting rule |
+| `scaling.py` | FLOP cost and run plan for the scaling-law fit |
 
 ---
 
@@ -177,8 +235,7 @@ out removes hard cases by construction and makes every later cohort easier in a
 way the score does not show. **A result from such a cohort must be read as "of
 objects Redrock is confident about", never as a result over DESI as a whole.**
 
-The two blind tests reported here predate the rule and were not filtered this
-way; `code/check.py` reports their `ZWARN != 0` counts (3 of 100 and 1 of 50)
+Tests IV and V predate the rule and were not filtered this way; `code/check.py` reports their `ZWARN != 0` counts (3 of 100 and 1 of 50)
 without failing them, and holds later cohorts to the rule via the
 `data/selection_rules.json` each build writes.
 
@@ -213,9 +270,12 @@ within 5σ_z**. The two populations do not overlap, so the remaining problem is
 
 ## Status and honest limits
 
-- Both blind tests are small — n = 100 and n = 50. Several results in this
-  project looked strong at n ≈ 40 and moved substantially at n ≈ 20,000; the
-  report flags each case where that happened.
+- The blind tests are small. Each has n = 50–100, and all of them together come
+  to 400. Several results in this project looked strong at n ≈ 40 and moved
+  substantially at n ≈ 20,000; the report flags each case where that happened.
+- The label-cleaning comparison (v2 against v1 training data) rests on 2 seeds
+  per arm, so it gives a direction, not a verdict. Its decisive test, scoring
+  on visually inspected spectra, has not been run yet.
 - Scores are agreement with Redrock, which is itself a measurement. Where
   `ZWARN != 0`, the two disagree without either being demonstrated wrong.
 - The target class is photometric intent. Some disagreements with it are the
