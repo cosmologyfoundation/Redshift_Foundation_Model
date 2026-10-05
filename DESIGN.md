@@ -1366,8 +1366,34 @@ imaging adds about a third more.
 This largely answers §6d-2's "catalogue fields miss ~70% of the errors". DELTACHI2
 misses them on its own. The fields taken jointly do not.
 
-**Rule v2** = v1 (§6d-2, kept whole) OR [PROGRAM ∈ {dark, bright} AND P_WRONG >
-0.01 AND NOT (Redrock STAR at |z| < 0.005 that Gaia also calls star-like)]. Why:
+**Rule v2, in full.** A training row is deleted if ANY of the conditions below holds.
+The inputs are the two `ZWARN == 0`, `COADD_FIBERSTATUS == 0` training files. Every
+Redrock field is taken from `zall-pix-iron`, matched on (TARGETID, SURVEY, PROGRAM).
+
+| # | condition | definition | source |
+|---|---|---|---|
+| A1 | repeat disagrees | another independent coadd of the same TARGETID (a different SURVEY/PROGRAM healpix coadd, also ZWARN = 0, COADD_FIBERSTATUS = 0) has \|z₁ − z₂\| / (1 + min z) > 0.01 | v1 |
+| A2 | Gaia says star, z > 0.01 | Gaia proper motion or parallax > 8σ, with σ_PM interpolated from G (G = 12, 15, 17, 19, 20, 21 → 0.015, 0.02, 0.07, 0.3, 0.6, 1.4 mas/yr; parallax σ = 0.8 σ_PM), and Redrock Z > 0.01 | v1 |
+| A3 | star-only target, z > 0.1 | MWS_ANY (bit 61) set, none of LRG (0), ELG (1), QSO (2), BGS_ANY (60), and Z > 0.1 | v1 |
+| B | Redrock unsure | DELTACHI2 < 25 | v1 |
+| C | learned: Redrock probably wrong | P_WRONG > 0.01 from `rrwrong_model_v1`, applied only to PROGRAM ∈ {dark, bright}, and never to a Redrock STAR at \|Z\| < 0.005 that A2's Gaia test also calls star-like | v2 |
+
+About C:
+- P_WRONG is a bag of 5 gradient-boosted classifiers (`code/rrwrong/train_final.py`).
+- It was trained on DESI EDR visual inspection at SV1 per-night depth.
+- Its inputs are Redrock's Z, log DELTACHI2, ZERR/(1+Z), CHI2/NPIXELS, NPIXELS, ZWARN, SPECTYPE, normalised COEFF, TSNR2, COADD_EXPTIME, Legacy Survey photometry and colours, morphology, Gaia G / BP−RP / parallax / proper motion, MASKBITS, and the target bits.
+- None of those inputs are spectra.
+
+v1 is A1 + A2 + A3 + B. v2 = v1 OR C. The deletion is a strict superset of v1.
+
+One command rebuilds both files: `code/rrwrong/run_clean2.py`. It runs three stages, each with multiprocessing:
+1. flags A/B (Pool 64)
+2. P_WRONG (Pool 64, 2 OpenMP threads each)
+3. writing main and sv3 as separate files (Pool 120)
+
+A stage is skipped when its outputs exist. `--force` rebuilds it.
+
+Why the rule is built this way:
 - DELTACHI2 < 25 stays. Inside P ≤ 0.01 those rows are still wrong 5–14× more
   often (VI per-night 0.56% vs 0.10%; repeat pairs 0.58% vs 0.04%).
 - **backup is exempt.** VI has no backup-condition spectra. There the model
@@ -1452,6 +1478,57 @@ right on 80% of the 2,022 Gaia-confirmed stars and 77% of the 110 blind-read err
    ![Before filtering, by class](figures/clean2_s4_before_by_class.png)
 
    ![After filtering, by class](figures/clean2_s5_after_by_class.png)
+
+### 6d-4. 1.5M clean-2 training with a 300k clean-2 validation (owner, 2026-10-05)
+
+The owner chose the run: clean-2 data, 1.5M training spectra (an explicit exception to the
+600k cap), and 20% of that, 300k, held out for validation. It is a single seed (42),
+because seeds are not being compared.
+- Checkpoint: `zfm_ckpt/C15_1500000_d320_s42_nc_fn_ev_ch_mu0.001_cl2_vb1300_cv2.pt`.
+- Same configuration as §6d-2/6d-3: `--d_rr 320 --norm_corr --rr_final_norm --evidence
+  --class_head --muon --muon_lr 1e-3`.
+- 4-GPU DDP with `--bs 8`, so global batch 32 (gbs = bs × GPUs). 46,875 steps took 2.48 h
+  on 4 A100s, 0.19 s per step.
+
+**A 300k validation set, built without breaking the old one.** `train.py` gained three flags:
+- `--val_blocks_main N`: validation = the first N main blocks of the fixed seed-777
+  permutation, with sv3 in proportion. Training never draws from those blocks.
+- `--n_val`
+- `--clean_val`
+
+The defaults are 400, 50,000 and unfiltered, so earlier runs are unchanged. At N = 1300 the
+clean-2 validation pool holds 328,116 rows (main 311,121, sv3 16,995). Each rank's shard holds
+at least 80,554 rows. The old 400-block clean-2 set (101,143 rows) is a subset, so earlier
+validation numbers stay comparable. `zfm/test_val300k.py` checks all of this, plus that
+training draws touch no validation block, no clean-2-deleted row, and no validation TARGETID.
+A 256-step 4-GPU smoke run checked the whole path first.
+
+**Result**, on 300,032 clean-2 validation spectra (`agree_eval.py --clean_val 2
+--val_blocks_main 1300`, sub-bin read-out):
+
+| class (single DESI target bit) | spectra | catastrophic \|Δz\| > 0.1(1+z) | NMAD of Δz/(1+z) |
+|---|---|---|---|
+| STAR | 67,737 | 7 (0.010%) | 8.0e-06 |
+| BGS | 100,300 | 52 (0.052%) | 1.7e-05 |
+| LRG | 36,877 | 19 (0.052%) | 7.3e-05 |
+| ELG | 53,757 | 32 (0.060%) | 1.7e-05 |
+| QSO | 14,677 | 18 (0.123%) | 2.0e-04 |
+| several / no class bits | 26,684 | 14 (0.052%) | 4.6e-05 |
+| **all** | **300,032** | **142 (0.047%)** | **1.7e-05** (5.2 km/s) |
+
+Within 0.003(1+z): 99.81%. Class head: 96.4% match a target bit, against 94.7% at 300k.
+"Several / no class bits" is 20,804 objects with two or more class bits (ELG+QSO 10,599,
+BGS+LRG 8,797, STAR+QSO 737, …) and 5,880 with none, mostly secondary targets.
+
+**Not yet a comparison.** The 300k models scored 0.055–0.060% and 2.0e-05 on a different
+60k clean-2 draw. They cannot be scored on this 300k set: they excluded only 400
+validation blocks from training, so blocks 401–1300 may be in their training data. A fair
+1.5M-vs-300k comparison needs both models on the original 400-block clean-2 objects, plus
+the known-wrong sets.
+
+![C15: predicted vs Redrock z](figures/c15_s1_pred_vs_redrock.png)
+
+![C15: by DESI target class](figures/c15_s2_by_class.png)
 
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
