@@ -1337,6 +1337,91 @@ Clean-validation catastrophic by target class (clean s42): STAR 0.00%, BGS
   seen on the blind-read errors, which the catalogue rule mostly cannot find.
 - NMAD improves slightly in both clean seeds (2.05 against 2.15–2.19e-5).
 
+### 6d-3. Clean v2: a learned Redrock-error filter (owner, 2026-09-28)
+
+The owner asked for a model that says when a Redrock redshift is wrong or
+probably wrong, and then for the training set to be rebuilt with it. Code:
+`~/claude_learning_map/rrwrong/` (copy in `code/rrwrong/`).
+
+**Truth.** The DESI EDR visual inspection (Lan+22, arXiv:2208.08516; Alexander+22,
+arXiv:2208.08517): 18,653 targets with VI_QUALITY ≥ 2.5. Redrock is run on
+them at three depths. The **SV1 per-night** coadds (105,760 rows) are close to
+main depth, and Redrock is wrong on 11.7% of them. The other two are tile-cumulative
+and healpix. A row is wrong if |Δz|/(1+z_VI) > 0.0033, or > 0.01 when VI says QSO.
+§6's "VI is a dead end" was about adjudicating SV3 outliers. For learning
+Redrock's own failure modes, SV1 is exactly what is needed.
+
+**Model.** Gradient boosting (`feats.py`) on Redrock's catalogue outputs (Z, log
+DELTACHI2, ZERR, CHI2/NPIXELS, template COEFF, SPECTYPE, ZWARN), TSNR2,
+imaging and Gaia, and the target bits. The Redrock fields alone give most of the gain;
+imaging adds about a third more.
+
+| test (none but the first is training data) | ZWARN=0 & DCHI2>25 | model |
+|---|---|---|
+| VI, leave-one-field-out, per-night depth, equal keep 81%: wrong | 1.58% | 0.35% |
+| 1,008,385 main targets on 2 tiles, equal keep 88%: pair disagreement | 0.73% | 0.16% |
+| Gaia WD with label z > 0.1 (2,022): removed | 30.8% | 100% |
+| blind-read Redrock errors (110): removed | 13.6% | 78% |
+
+This largely answers §6d-2's "catalogue fields miss ~70% of the errors". DELTACHI2
+misses them on its own. The fields taken jointly do not.
+
+**Rule v2** = v1 (§6d-2, kept whole) OR [PROGRAM ∈ {dark, bright} AND P_WRONG >
+0.01 AND NOT (Redrock STAR at |z| < 0.005 that Gaia also calls star-like)]. Why:
+- DELTACHI2 < 25 stays. Inside P ≤ 0.01 those rows are still wrong 5–14× more
+  often (VI per-night 0.56% vs 0.10%; repeat pairs 0.58% vs 0.04%).
+- **backup is exempt.** VI has no backup-condition spectra. There the model
+  deleted 72% of stars that Redrock *and* Gaia both put at rest, against 2.0% in
+  dark/bright. That is extrapolation, not measurement. Found only because the
+  per-class cost showed MWS at 25% deleted.
+
+| file | source rows | deleted | kept | size |
+|---|---|---|---|---|
+| `dr1_main_primary_tgt_zwarn0_clean2_brz.h5` | 18,659,804 | 1,227,729 (6.580%) | 17,432,075 | 986.3 GB |
+| `dr1_sv3_primary_tgt_zwarn0_clean2_brz.h5` | 992,821 | 45,175 (4.550%) | 947,646 | 53.6 GB |
+
+Both copies pass v1's verify (SRC_ROW, TARGETID order, 502 rows identical in all 60
+datasets) plus a v2 check that no kept row falls under the rrwrong rule. With
+`--clean_val 2`, validation goes from 107,720 to 101,143 rows (6.11% removed) and
+stays disjoint from training (`test_clean2.py`).
+
+Deleted per class in main, v1 → v2: QSO 6.2 → 13.8%, ELG 9.5 → 13.2%, LRG 1.1 →
+4.6%, BGS 0.5 → 1.7%, MWS 0.4 → 0.7%. The cost falls on the hard QSO and ELG rows
+(the §6d-2 caveat), so evaluate on the unfiltered validation set and the known-wrong
+sets as well as on the clean-2 one. Use: `train.py --clean 2`, `agree_eval.py
+--clean_val 2`, `Spectra(clean=2)`. `--clean` alone is still v1. Test:
+`zfm/test_clean2.py`.
+
+**v2 against v1, 300k × 2 seeds (2026-09-28, `results/prereg_clean2_300k.txt`).**
+The config is the same as §6d-2. The v1 arms reuse the C3 checkpoints; the code has changed
+since then only by `--pairs` additions, which are off by default. All four models were
+scored on the same objects.
+
+| catastrophic vs Redrock | v1 s42 | v1 s43 | v2 s42 | v2 s43 |
+|---|---|---|---|---|
+| 60k clean-2 validation | 0.048% (29) | 0.050% (30) | 0.060% (36) | 0.055% (33) |
+| 60k clean-1 validation | 0.448% | 0.445% | 0.495% | 0.508% |
+| 60k unfiltered validation | 1.163% | 1.154% | 1.211% | 1.256% |
+| Gaia WD z>0.1: answered 0 / **copies Redrock** | 79.6 / **5.4%** | 80.3 / **4.1%** | 79.6 / **3.3%** | 87.3 / **3.8%** |
+| blind-read Redrock errors: right | 79.1% | 77.3% | 77.3% | 80.9% |
+| blind-read Redrock right: right | 89.8% | 89.8% | 90.4% | 90.4% |
+
+- **Where the labels are trustworthy, v2 is unchanged.** On clean-2 validation the counts
+  sit inside Poisson noise (~30 ± 5.5). Unfiltered objects where only one arm disagrees
+  (`rrwrong/attrib_v2.py`) show the same thing: on rows both rules keep, v2's net excess
+  is +5 and +3 objects.
+- **The extra disagreement is on the rows v2 distrusts.** Net extra objects (v2-only minus
+  v1-only disagreements), s42 / s43: on rows v2 alone deletes, +19 / +34; on rows v1
+  already deleted, +5 / +24. That is the intended trade: v2 does not learn those labels,
+  so it agrees with them less. Without truth on those rows, "less agreement" cannot be
+  called worse or better.
+- **Copying of the white-dwarf errors goes down again in both seeds** (3.3–3.8% against
+  4.1–5.4%). The blind-read Redrock errors do not move (77–81% in every arm, n = 110).
+- With 2 seeds per arm, these are directions only. v2 does not hurt where Redrock is right. It
+  has not been shown to help on the errors that matter most. The decisive test needs truth on
+  the rows v2 deletes: the EDR VI sample is that truth (§6d-3), once its SV1 spectra are in
+  the model's input format.
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
