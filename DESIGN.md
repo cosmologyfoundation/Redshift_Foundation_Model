@@ -1422,6 +1422,37 @@ scored on the same objects.
   the rows v2 deletes: the EDR VI sample is that truth (§6d-3), once its SV1 spectra are in
   the model's input format.
 
+**Figures: the clean-2 filter, before and after (2026-09-29).**
+The model is zfm v2, seed 42. Before = 60,032 unfiltered validation spectra. After = a fresh
+60,032 drawn from the clean-2 validation set: the same fixed blocks, skipping the rows
+the filter removes. Orange marks |Δz| > 0.1(1+z) between zfm and Redrock. NMAD is that of
+Δz/(1+z). Generator: `~/claude_learning_map/mkslides_0929{,b}.py` on NERSC.
+
+What changes between the figures is the reference, not zfm. Most of the 727 orange points
+before filtering sit on doubtful Redrock labels. Where Redrock is proven wrong, zfm is
+right on 80% of the 2,022 Gaia-confirmed stars and 77% of the 110 blind-read errors.
+
+1. Before filtering: 727 orange points (1.21%), NMAD 2.1e-05.
+
+   ![Before filtering](figures/clean2_s1_before.png)
+
+2. After filtering: 36 orange points (0.060%), NMAD 2.0e-05.
+
+   ![After filtering](figures/clean2_s2_after.png)
+
+3. What the filter removes. 6.1% of the spectra carry 95.5% of the orange points:
+   rule A 27, DELTACHI2 < 25 413, P_WRONG > 0.01 254.
+
+   ![The filter](figures/clean2_s3_filter.png)
+
+4. By DESI target class (target bits, not SPECTYPE), before and after. Catastrophic
+   rate, before → after: STAR 0.16 → 0.02%, BGS 0.56 → 0.05%, LRG 0.81 → 0.03%,
+   ELG 2.73 → 0.12%, QSO 3.89 → 0.10%. NMAD is unchanged in every class.
+
+   ![Before filtering, by class](figures/clean2_s4_before_by_class.png)
+
+   ![After filtering, by class](figures/clean2_s5_after_by_class.png)
+
 ## 6e. The goal: agree with Redrock where it is right, catch it where it is wrong
 
 Stated by the project owner on 2026-09-17: **the model exists to surpass
