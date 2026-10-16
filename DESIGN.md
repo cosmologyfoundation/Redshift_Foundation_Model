@@ -1,5 +1,26 @@
 # DESIGN — a foundation model that reads a spectrum and returns type and redshift
 
+> **Notice, 2026-10-08. Read this first.**
+>
+> 1. **This file designs a redshift model, not a foundation model.** Templates,
+>    12,140 z bins, top-K, evidence and the reranker are all redshift-specific. The
+>    encoder sees 79 px by design and was trained on z labels. The foundation-model
+>    design is now [`FM_DESIGN.md`](FM_DESIGN.md). Here, the zfm redshift machinery
+>    is one possible head for the redshift task.
+> 2. **Catastrophic-rate A/Bs scored on unfiltered validation are low-power.** This
+>    covers every A/B before the clean-2 test set (2026-09-29): Muon, SwiGLU,
+>    capacity, ε-mixture, pre-training, shape and partner features, depth
+>    distillation and alias negatives. About 95% of their "catastrophics" are on rows
+>    clean-2 removes as likely Redrock label errors. The same model scores 1.16–1.26%
+>    raw and 0.048–0.060% on clean-2 (§7a correction table). Their "no effect"
+>    verdicts mean "not detectable with that test", not "no effect". Their "adopted"
+>    verdicts (Muon 1e-3, evidence reranker) are likewise unconfirmed on clean-2.
+>    The class head was judged on class accuracy, which Redrock's z errors do not
+>    touch, so it is not affected.
+> 3. **From 2026-10-08, by the owner's rules:** all data is clean-2; the z target
+>    is Redrock `Z`; one seed (42); arms are compared on the same clean-2 test
+>    objects by counting noise.
+
 Every number in this file is measured on DESI DR1 in `METHOD.md`, on **1,100
 spectra read blind across eighteen cohorts** plus the larger offline studies. The
 design is almost entirely determined by four of them; the architecture is the
@@ -66,7 +87,7 @@ this table and `train.py` prints every unbuilt item at startup.
 | sky/artifact mask in the evidence maps | 3, 6e | `evidence.spectrum_maps(sky=0.3)` | **built 2026-09-23**; used for the detection flag (224 → 170; out of sample Redrock wrong on ≥ 46/99, teacher right 78% of decidable disputes). **Not for the reranker**: retrained with masked features, 154 saved / 190 broken, p = 0.059 |
 | eval refuses a headline without the stratification table | 6 | — | **not built** |
 | encoder input without the ±50 clip | 2 | `ZFM(softclip=True)`, `--softclip` | **built and A/B'd, no effect; clamp kept** |
-| label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | — | **not built** |
+| label-free pre-training: known shift, masked reconstruction, evidence-map prediction | 7a | `pretrain.py` (masked reconstruction; known shift built but OFF, noise shortcut on coadds; evidence-map prediction not built) | **built 2026-09-23; measured once at 150k labels (no effect on catastrophic, val z −11%); label-efficiency test pre-registered 2026-10-08 and run 2026-10-09: HELPS at 30k / 100k / 300k labels (300k by one object), worth ~1.5× labels, not the 3× headline (§7a)** |
 | self-distillation from depth (SV3 degraded to main depth) | 7b-2 | `deep_tail.py`, `teacher.py`, `--deep_frac --degrade --teacher` | **built 2026-09-22; neither degradation (182/222) nor teacher labels (130/150) help at 150k** — §7b-2 |
 | confidence calibration on a held-out set | 7b-3 | — | **not built** |
 | fine-tuning with a frozen encoder | 7c | — | **not built** |
@@ -330,6 +351,14 @@ SwiGLU in the encoder, and, earlier, capacity — that **a better-fitted surface
 does not buy a better pick**. The remaining catastrophic is decided at ranking
 and is information-limited, as §5 found for ELG. It is not limited by the
 optimiser or by the activation. The flags stay available.
+
+**Correction, 2026-10-08.** This conclusion is not supported, because every
+catastrophic number in it was scored on unfiltered validation. There, about 95%
+of catastrophics are on rows clean-2 removes as likely Redrock label errors
+(§7a correction table). The model's real error rate is about 0.05%, smaller than
+the 0.10% seed spread of these runs. "A better-fitted surface does not buy a
+better pick" may be an artifact of label noise. It is open until re-measured on
+the clean-2 test set.
 
 ---
 
@@ -2050,6 +2079,39 @@ next step is not another objective. It is to find where the surface's
 improvement is lost: whether the truth now appears among the reranker's
 candidates more often, or ranks higher among them, while the final argmax is
 unchanged (`diag_alias.py`'s truth-proposed rate and rank, on these arms).
+
+**Correction, 2026-10-08: the verdict above is withdrawn as inconclusive.**
+It has two defects.
+
+1. **Wrong yardstick.** The run was judged at 150k labels on catastrophic rate,
+   which is a post-training measure. By this section's own rule ("How each stage
+   has to prove itself"), pre-training is measured by **label efficiency at a
+   fixed label count**. That test was never run, and two weeks of 7b-only work
+   followed.
+2. **No power.** Both training and scoring used the unfiltered files. On
+   unfiltered validation, about 95% of "catastrophics" fall on rows that clean-2
+   removes as likely Redrock label errors. The same four models on the same 60,032
+   test spectra (`logs/c4_pipeline.log`) show it:
+
+   | reference | C3 s42 | C3 s43 | C4 s42 | C4 s43 |
+   |---|---|---|---|---|
+   | raw | 1.163% | 1.154% | 1.211% | 1.256% |
+   | clean-1 | 0.448% | 0.445% | 0.495% | 0.508% |
+   | **clean-2** | **0.048%** | **0.050%** | **0.060%** | **0.055%** |
+
+   The arms in the table above span 1.076–1.178%. That spread of 0.10% is about
+   twice the model's whole real error rate (~0.05% on clean-2). Pre-training
+   could have halved the real errors and this test would not have shown it.
+
+**Label-efficiency test, drafted 2026-10-08** (`results/prereg_fm_labeleff.txt`,
+`run_fm.sh`, `fm_summary.py`). It was not run, and it is **superseded by
+`FM_DESIGN.md`**, which evaluates the foundation model on a frozen-probe suite
+of several tasks rather than on redshift alone. Kept for the record:
+- all data clean-2; z target Redrock `Z`
+- 300k pre-train pool (the labelled pool with labels hidden); labels N ∈ {30k, 100k, 300k} × {scratch, `--init_enc`}
+- tested on the 60k clean-2 set
+- pools nested; overlap with the test set 0 (`test_fm.py`)
+- owner 2026-10-08: **one seed** (on clean-2, seeds differ by ~3 of 60k objects); arms compared by counting noise on the same test objects
 
 ### 7b. Post-train — from a foundation to beating Redrock
 
